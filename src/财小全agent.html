@@ -3253,6 +3253,29 @@ function merge(b, imp){
           prev:months[lastIdx - 1]};
 }
 function ledger(){ return merge(ownBook(curAcct()), myTxns()); }
+/* 跨场景联动：税 / 贷 / 保三项口径从当前账本现算，账本无数据时回退到预设常量 */
+function cxqBaseIncome(){
+  var b = BOOK[state.mode] || BOOK.enterprise;
+  var ms = b.months, last = ms[ms.length - 1];
+  return last ? (Number(last[1]) || 0) : 0;
+}
+function cxqLinked(){
+  var L = ledger(), U = window.CXQ_U || {};
+  var months = L.months.slice(-3);
+  var sumInc = months.reduce(function(s, m){ return s + (Number(m.inc) || 0); }, 0);
+  var income = Number(L.last.inc) || 0;
+  var base = cxqBaseIncome();
+  var ratio = (base > 0 && income > 0) ? income / base : 1;
+  var q3 = sumInc > 0 ? sumInc : (Number(U.q3) || 0);
+  return {
+    income: income > 0 ? income : (Number(U.R) || 0),
+    q3: q3,
+    vat: Math.round(q3 * 0.01),
+    gap: Math.max(0, Math.round((Number(U.gap) || 0) * ratio)),
+    ratio: ratio,
+    monthN: months.length
+  };
+}
 /* 主账号分享出去的那份：结论级只读，不掺入子账号自己的导入 */
 function sharedLedger(){ return merge(BOOK[state.mode], []); }
 
@@ -4937,31 +4960,34 @@ function cxqOfflineAnswer(v){
       note:"只汇总当前模式、当前账号自己的数据；其他模式/账号的收支不会混进来。",
       dis:"数据来源：" + MODE_NAME[state.mode] + " · " + curAcct().role + " 的账本。"});
   }
-  /* 税 */
+  /* 税：销售额与税额从当前账本近 3 个月现算 */
   if(/税|增值税|个税|发票|报税|申报|税负/.test(low)){
-    var underThreshold = Number(U.q3) <= 300000;
+    var K = cxqLinked();
+    var underThreshold = Number(K.q3) <= 300000;
     return mkCard({title:"税负测算（条件核验）", ic:"税", color:"#3F5D8A", status:"需核验适用条件", st:"t-warn",
-      rows:[["本季销售额", money(U.q3)],
+      rows:[["近 "+K.monthN+" 个月销售额（账本合计）", money(K.q3)],
             ["起征点判断", underThreshold ? "不超过 300,000 元；需核验适用条件" : "超过 300,000 元；需核验适用条件"],
-            ["增值税测算", underThreshold ? "暂不直接给出确定税额" : money(U.vat)],
+            ["增值税测算（销售额 × 1%）", underThreshold ? "暂不直接给出确定税额" : money(K.vat)],
             ["个税（独立测算）", money(U.tax)]],
       basis:"季度起征点判断不能替代纳税人身份、计税期间、销售额口径、业务类型及优惠条件核验。若符合相关免税条件，季度销售额不超过 300,000 元时可能免征；超过起征点时，也须核验具体应税项目与征收率。",
-      dis:"此处为演示性判断，不构成申报结论。资料不足时不应将预置税额视为最终应纳税额。"});
+      dis:"销售额取当前账号账本近 "+K.monthN+" 个月收入合计，导入流水后自动重算；此处为演示性判断，不构成申报结论。"});
   }
-  /* 贷 */
+  /* 贷：DTI 分母取当前账本月收入 */
   if(/贷|还款|房贷|利率|dti|负债|月供|冻结卡|停卡/.test(low)){
-    var dti = Math.round((U.biz+U.cons)/U.R*100);
+    var KL = cxqLinked();
+    var dti = ((U.biz+U.cons)/KL.income*100).toFixed(1);
     return mkCard({title:"负债与还款", ic:"贷", color:"#6D4E7E", status:"健康", st:"t-ok",
       rows:[["经营贷月供", money(U.biz)+"（每月 20 日）"],["消费贷月供", money(U.cons)+"（每月 8 日）"],
-            ["负债压力 DTI", dti+"%（低于 35% 为安全）"]],
-      dis:"还款日已加入提醒；需要停卡/挂失我会走二次确认。"});
+            ["负债压力 DTI", dti+"%（月还款 "+money(U.biz+U.cons)+" ÷ 本月收入 "+money(KL.income)+"）"]],
+      dis:"DTI 分母取当前账本月收入，导入流水后自动重算；月供取演示贷款表，不随流水变动。还款日已加入提醒；需要停卡/挂失我会走二次确认。"});
   }
-  /* 保 */
+  /* 保：缺口按当前账本收入相对演示基准等比重算 */
   if(/保|保险|重疾|寿险|缺口|意外/.test(low)){
+    var KB = cxqLinked();
     return mkCard({title:"保障缺口", ic:"保", color:"#B45309", status:"待补足", st:"t-warn",
-      rows:[["你的家庭责任", money(U.gap+800000)],["已有保障", money(800000)],
-            ["建议补足缺口", money(U.gap)]],
-      dis:"仅为缺口测算，不推荐具体产品，请咨询持牌顾问。"});
+      rows:[["你的家庭责任", money(KB.gap+800000)],["已有保障", money(800000)],
+            ["建议补足缺口", money(KB.gap)]],
+      dis:"缺口按当前账本收入相对演示基准等比调整（当前为基准的 "+Math.round(KB.ratio*100)+"%），已有保额为预设值；仅为缺口测算，不推荐具体产品，请咨询持牌顾问。"});
   }
   /* 风险 / 被骗 / 可疑 */
   if(/风险|可疑|被骗|诈骗|盗刷|异常|冻结|挂失/.test(low)){
