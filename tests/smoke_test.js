@@ -9,7 +9,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const target = process.argv[2] || path.join(__dirname, "..", "src", "财小全-比赛修正版_修复版.html");
+const target = process.argv[2] || path.join(__dirname, "..", "src", "财小全agent.html");
 if (!fs.existsSync(target)) {
   console.error("找不到目标文件: " + target);
   process.exit(1);
