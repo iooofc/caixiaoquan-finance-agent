@@ -12,9 +12,11 @@
 
 ## 一、30 秒跑起来
 
-方式 A（最快）：双击 `src/财小全agent.html`，Chrome / Edge 直接打开即可。
+方式 A（最快，零环境）：直接打开在线演示地址 <https://4m78se5ar2y1f.doubao.link/app/app_17fhd5sv7t3> —— 手机 / 电脑浏览器均可，无需下载、无需安装任何依赖。
 
-方式 B（推荐，避免 `file://` 的跨域限制）：
+方式 B：双击本地 `src/财小全agent.html`，Chrome / Edge 直接打开即可。
+
+方式 C（推荐本地调试，避免 `file://` 的跨域限制）：
 
 ```bash
 # 任选其一，在 src 目录下执行
